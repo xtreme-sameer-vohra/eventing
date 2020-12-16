@@ -19,6 +19,7 @@ package helpers
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"testing"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -144,13 +145,7 @@ func setupChannelTracingWithReply(
 		Children: []tracinghelper.TestSpanTree{
 			{
 				// 3. Channel sends event to transformer pod.
-				Span: tracinghelper.MatchHTTPSpanWithReply(
-					model.Client,
-					tracinghelper.WithHTTPHostAndPath(
-						fmt.Sprintf("%s.%s.svc", transformerPod.Name, client.Namespace),
-						"/",
-					),
-				),
+				Span: channelSpan(model.Client, eventID, fmt.Sprintf("%s.%s.svc", transformerPod.Name, client.Namespace)),
 				Children: []tracinghelper.TestSpanTree{
 					{
 						// 4. Transformer Pod receives event from Channel.
@@ -187,13 +182,7 @@ func setupChannelTracingWithReply(
 						Children: []tracinghelper.TestSpanTree{
 							{
 								// 7. Reply Channel sends event to the logging Pod.
-								Span: tracinghelper.MatchHTTPSpanNoReply(
-									model.Client,
-									tracinghelper.WithHTTPHostAndPath(
-										fmt.Sprintf("%s.%s.svc", recordEventsPod.Name, client.Namespace),
-										"/",
-									),
-								),
+								Span: channelSpan(model.Client, eventID, fmt.Sprintf("%s.%s.svc", recordEventsPod.Name, client.Namespace)),
 								Children: []tracinghelper.TestSpanTree{
 									{
 										// 8. Logging pod receives event from Channel.
@@ -235,4 +224,15 @@ func setupChannelTracingWithReply(
 		cetest.HasId(eventID),
 		cetest.DataContains(body),
 	)
+}
+
+func channelSpan(kind model.Kind, eventID, destination string) *tracinghelper.SpanMatcher {
+	return &tracinghelper.SpanMatcher{
+		Kind: &kind,
+		Tags: map[string]*regexp.Regexp{
+			"messaging.system":      regexp.MustCompile("^knative$"),
+			"messaging.destination": regexp.MustCompile("^" + destination + "$"),
+			"messaging.message_id":  regexp.MustCompile("^" + eventID + "$"),
+		},
+	}
 }
