@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"testing"
 
@@ -47,9 +46,9 @@ func (t SpanTree) String() string {
 }
 
 type SpanMatcher struct {
-	Kind                     *model.Kind               `json:"a_Kind,omitempty"`
-	LocalEndpointServiceName string                    `json:"b_Name,omitempty"`
-	Tags                     map[string]*regexp.Regexp `json:"c_Tags,omitempty"`
+	Kind                     *model.Kind       `json:"a_Kind,omitempty"`
+	LocalEndpointServiceName string            `json:"b_Name,omitempty"`
+	Tags                     map[string]string `json:"c_Tags,omitempty"`
 }
 
 type SpanMatcherOption func(*SpanMatcher)
@@ -70,15 +69,18 @@ func WithHTTPHostAndPath(host, path string) SpanMatcherOption {
 	//    foo.bar.svc.cluster.local
 	// It's hardly perfect, but requires the suffix to start with the delimiter '.'
 	// and then match anything prior to the path starting, e.g. '/'
-	hostSuffix := "[.][^/]+"
+	hostSuffix := ".cluster.local"
 
 	return func(m *SpanMatcher) {
 		if m.Kind != nil {
 			if *m.Kind == model.Client {
-				m.Tags["http.url"] = regexp.MustCompile("^http://" + regexp.QuoteMeta(host) + hostSuffix + regexp.QuoteMeta(path) + "$")
+				//m.Tags["http.url"] = regexp.MustCompile("^http://" + regexp.QuoteMeta(host) + hostSuffix + regexp.QuoteMeta(path) + "$")
+				m.Tags["http.url"] = "http://" + host + hostSuffix + path
 			} else if *m.Kind == model.Server {
-				m.Tags["http.host"] = regexp.MustCompile("^" + regexp.QuoteMeta(host) + hostSuffix + "$")
-				m.Tags["http.path"] = regexp.MustCompile("^" + regexp.QuoteMeta(path) + "$")
+				m.Tags["http.host"] = host + hostSuffix
+				//m.Tags["http.host"] = regexp.MustCompile("^" + regexp.QuoteMeta(host) + hostSuffix + "$")
+				m.Tags["http.path"] = path
+				//m.Tags["http.path"] = regexp.MustCompile("^" + regexp.QuoteMeta(path) + "$")
 			}
 		}
 	}
@@ -102,7 +104,7 @@ func (m *SpanMatcher) MatchesSpan(span *model.SpanModel) error {
 		}
 	}
 	for k, v := range m.Tags {
-		if t := span.Tags[k]; !v.MatchString(t) {
+		if t := span.Tags[k]; v != t {
 			return fmt.Errorf("unexpected tag %s: got %q, want %q", k, t, v)
 		}
 	}
@@ -112,9 +114,11 @@ func (m *SpanMatcher) MatchesSpan(span *model.SpanModel) error {
 func MatchHTTPSpanWithCode(kind model.Kind, statusCode int, opts ...SpanMatcherOption) *SpanMatcher {
 	m := &SpanMatcher{
 		Kind: &kind,
-		Tags: map[string]*regexp.Regexp{
-			"http.method":      regexp.MustCompile("^" + http.MethodPost + "$"),
-			"http.status_code": regexp.MustCompile("^" + strconv.Itoa(statusCode) + "$"),
+		Tags: map[string]string{
+			"http.method": http.MethodPost,
+			//"http.method":      regexp.MustCompile("^" + http.MethodPost + "$"),
+			"http.status_code": strconv.Itoa(statusCode),
+			//"http.status_code": regexp.MustCompile("^" + strconv.Itoa(statusCode) + "$"),
 		},
 	}
 	for _, opt := range opts {
@@ -225,7 +229,7 @@ func (tt TestSpanTree) MatchesSubtree(t *testing.T, actual *SpanTree) (matches [
 }
 
 // matchesSubtrees checks for a match of each TestSpanTree with a
-// subtree of a distrinct actual SpanTree.
+// subtree of a distinct actual SpanTree.
 func matchesSubtrees(t *testing.T, ts []TestSpanTree, as []SpanTree) error {
 	if t != nil {
 		t.Helper()

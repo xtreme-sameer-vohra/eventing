@@ -18,8 +18,6 @@ package helpers
 
 import (
 	"context"
-	"fmt"
-	"regexp"
 	"testing"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -215,20 +213,20 @@ func setupBrokerTracing(_ context.Context, brokerClass string) SetupTracingTestI
 
 func ingressSpan(broker *v1beta1.Broker, eventID string) *tracinghelper.SpanMatcher {
 	return &tracinghelper.SpanMatcher{
-		Tags: map[string]*regexp.Regexp{
-			"messaging.system":      regexp.MustCompile("^knative$"),
-			"messaging.destination": regexp.MustCompile(fmt.Sprintf("^broker:%s.%s$", broker.Name, broker.Namespace)),
-			"messaging.message_id":  regexp.MustCompile("^" + eventID + "$"),
-		},
+		//Tags: map[string]*regexp.Regexp{
+		//	"messaging.system":      regexp.MustCompile("^knative$"),
+		//	"messaging.destination": regexp.MustCompile(fmt.Sprintf("^broker:%s.%s$", broker.Name, broker.Namespace)),
+		//	"messaging.message_id":  regexp.MustCompile("^" + eventID + "$"),
+		//},
 	}
 }
 
 func triggerSpan(trigger *v1beta1.Trigger, eventID string) *tracinghelper.SpanMatcher {
 	return &tracinghelper.SpanMatcher{
-		Tags: map[string]*regexp.Regexp{
-			"messaging.system":      regexp.MustCompile("^knative$"),
-			"messaging.destination": regexp.MustCompile(fmt.Sprintf("^trigger:%s.%s$", trigger.Name, trigger.Namespace)),
-			"messaging.message_id":  regexp.MustCompile("^" + eventID + "$"),
-		},
+		//Tags: map[string]*regexp.Regexp{
+		//	"messaging.system":      regexp.MustCompile("^knative$"),
+		//	"messaging.destination": regexp.MustCompile(fmt.Sprintf("^trigger:%s.%s$", trigger.Name, trigger.Namespace)),
+		//	"messaging.message_id":  regexp.MustCompile("^" + eventID + "$"),
+		//},
 	}
 }

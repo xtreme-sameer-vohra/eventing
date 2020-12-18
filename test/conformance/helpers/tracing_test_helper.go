@@ -78,7 +78,7 @@ func tracingTest(
 
 	// Match the trace
 	traceID := getTraceIDHeader(t, matches)
-	trace, err := zipkin.JSONTracePred(traceID, 5*time.Minute, func(trace []model.SpanModel) bool {
+	trace, err := zipkin.JSONTracePred(traceID, 2*time.Minute, func(trace []model.SpanModel) bool {
 		tree, err := tracinghelper.GetTraceTree(trace)
 		if err != nil {
 			return false
@@ -87,7 +87,7 @@ func tracingTest(
 		return len(expectedTestSpan.MatchesSubtree(nil, tree)) > 0
 	})
 	if err != nil {
-		t.Logf("Unable to get trace %q: %v. Trace so far %+v", traceID, err, tracinghelper.PrettyPrintTrace(trace))
+		//t.Logf("Unable to get trace %q: %v. Trace so far %+v", traceID, err, tracinghelper.PrettyPrintTrace(trace))
 		tree, err := tracinghelper.GetTraceTree(trace)
 		if err != nil {
 			t.Fatal(err)
@@ -95,6 +95,7 @@ func tracingTest(
 		if len(expectedTestSpan.MatchesSubtree(t, tree)) == 0 {
 			t.Fatalf("No matching subtree. want: %v got: %v", expectedTestSpan, tree)
 		}
+		t.Logf("OMERGERDDSSS. want: %v got: %v", expectedTestSpan, tree)
 	}
 }
 

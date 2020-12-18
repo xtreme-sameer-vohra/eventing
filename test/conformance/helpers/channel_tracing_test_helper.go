@@ -73,10 +73,10 @@ func setupChannelTracingWithReply(
 	recordEventsPod := recordevents.DeployEventRecordOrFail(ctx, client, recordEventsPodName)
 
 	// Create the subscriber, a Pod that mutates the event.
-	transformerPod := recordevents.DeployEventRecordOrFail(
+	mutatingPod := recordevents.DeployEventRecordOrFail(
 		ctx,
 		client,
-		"transformer",
+		"mutator",
 		recordevents.ReplyWithTransformedEvent(
 			"mutated",
 			eventSource,
@@ -89,7 +89,7 @@ func setupChannelTracingWithReply(
 		"sub",
 		channelName,
 		channel,
-		resources.WithSubscriberForSubscription(transformerPod.Name),
+		resources.WithSubscriberForSubscription(mutatingPod.Name),
 		resources.WithReplyForSubscription(replyChannelName, channel))
 
 	// Create the Subscription linking the reply Channel to the LogEvents K8s Service.
@@ -143,68 +143,83 @@ func setupChannelTracingWithReply(
 		),
 		Children: []tracinghelper.TestSpanTree{
 			{
-				// 3. Channel sends event to transformer pod.
-				Span: tracinghelper.MatchHTTPSpanWithReply(
-					model.Client,
-					tracinghelper.WithHTTPHostAndPath(
-						fmt.Sprintf("%s.%s.svc", transformerPod.Name, client.Namespace),
-						"/",
-					),
-				),
+				Span: channelSpan(eventID, fmt.Sprintf("%s.%s.svc", mutatingPod.Name, client.Namespace), "/"),
 				Children: []tracinghelper.TestSpanTree{
 					{
-						// 4. Transformer Pod receives event from Channel.
+						// 3. Channel sends event to transformer pod.
 						Span: tracinghelper.MatchHTTPSpanWithReply(
-							model.Server,
+							model.Client,
 							tracinghelper.WithHTTPHostAndPath(
-								fmt.Sprintf("%s.%s.svc", transformerPod.Name, client.Namespace),
-								"/",
-							),
-							tracinghelper.WithLocalEndpointServiceName(transformerPod.Name),
-						),
-					},
-				},
-			},
-			{
-				// 5. Channel sends reply from Transformer Pod to the reply Channel.
-				Span: tracinghelper.MatchHTTPSpanNoReply(
-					model.Client,
-					tracinghelper.WithHTTPHostAndPath(
-						fmt.Sprintf("%s-kn-channel.%s.svc", replyChannelName, client.Namespace),
-						"",
-					),
-				),
-				Children: []tracinghelper.TestSpanTree{
-					// 6. Reply Channel receives event from the original Channel's reply.
-					{
-						Span: tracinghelper.MatchHTTPSpanNoReply(
-							model.Server,
-							tracinghelper.WithHTTPHostAndPath(
-								fmt.Sprintf("%s-kn-channel.%s.svc", replyChannelName, client.Namespace),
+								fmt.Sprintf("%s.%s.svc", mutatingPod.Name, client.Namespace),
 								"/",
 							),
 						),
 						Children: []tracinghelper.TestSpanTree{
 							{
-								// 7. Reply Channel sends event to the logging Pod.
+								// 4. Transformer Pod receives event from Channel.
+								Span: tracinghelper.MatchHTTPSpanWithReply(
+									model.Server,
+									tracinghelper.WithHTTPHostAndPath(
+										fmt.Sprintf("%s.%s.svc", mutatingPod.Name, client.Namespace),
+										"/",
+									),
+									tracinghelper.WithLocalEndpointServiceName(mutatingPod.Name),
+								),
+							},
+						},
+					},
+					{
+						Span: channelSpan(eventID, fmt.Sprintf("%s-kn-channel.%s.svc", replyChannelName, client.Namespace), ""),
+						Children: []tracinghelper.TestSpanTree{
+							{
+								// 5. Channel sends reply from Transformer Pod to the reply Channel.
 								Span: tracinghelper.MatchHTTPSpanNoReply(
 									model.Client,
 									tracinghelper.WithHTTPHostAndPath(
-										fmt.Sprintf("%s.%s.svc", recordEventsPod.Name, client.Namespace),
-										"/",
+										fmt.Sprintf("%s-kn-channel.%s.svc", replyChannelName, client.Namespace),
+										"",
 									),
 								),
 								Children: []tracinghelper.TestSpanTree{
+									// 6. Reply Channel receives event from the original Channel's reply.
 									{
-										// 8. Logging pod receives event from Channel.
 										Span: tracinghelper.MatchHTTPSpanNoReply(
 											model.Server,
 											tracinghelper.WithHTTPHostAndPath(
-												fmt.Sprintf("%s.%s.svc", recordEventsPod.Name, client.Namespace),
+												fmt.Sprintf("%s-kn-channel.%s.svc", replyChannelName, client.Namespace),
 												"/",
 											),
-											tracinghelper.WithLocalEndpointServiceName(recordEventsPod.Name),
 										),
+										Children: []tracinghelper.TestSpanTree{
+											{
+												Span: channelSpan(eventID, fmt.Sprintf("%s.%s.svc", recordEventsPod.Name, client.Namespace), "/"),
+												Children: []tracinghelper.TestSpanTree{
+													{
+														// 7. Reply Channel sends event to the logging Pod.
+														Span: tracinghelper.MatchHTTPSpanNoReply(
+															model.Client,
+															tracinghelper.WithHTTPHostAndPath(
+																fmt.Sprintf("%s.%s.svc", recordEventsPod.Name, client.Namespace),
+																"/",
+															),
+														),
+														Children: []tracinghelper.TestSpanTree{
+															{
+																// 8. Logging pod receives event from Channel.
+																Span: tracinghelper.MatchHTTPSpanNoReply(
+																	model.Server,
+																	tracinghelper.WithHTTPHostAndPath(
+																		fmt.Sprintf("%s.%s.svc", recordEventsPod.Name, client.Namespace),
+																		"/",
+																	),
+																	tracinghelper.WithLocalEndpointServiceName(recordEventsPod.Name),
+																),
+															},
+														},
+													},
+												},
+											},
+										},
 									},
 								},
 							},
@@ -235,4 +250,19 @@ func setupChannelTracingWithReply(
 		cetest.HasId(eventID),
 		cetest.DataContains(body),
 	)
+}
+
+func channelSpan(eventID, host, path string) *tracinghelper.SpanMatcher {
+	k := model.Client
+	return &tracinghelper.SpanMatcher{
+		Kind: &k,
+		//Tags: map[string]*regexp.Regexp{
+		Tags: map[string]string{
+			"messaging.system":      "knative",
+			"messaging.destination": "http://" + host + ".cluster.local" + path,
+			//"messaging.destination": regexp.MustCompile("^" + destination + "$"),
+			"messaging.message_id": eventID,
+			//"messaging.message_id":  regexp.MustCompile("^" + eventID + "$"),
+		},
+	}
 }
