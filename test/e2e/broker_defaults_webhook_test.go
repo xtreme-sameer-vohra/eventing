@@ -130,6 +130,8 @@ func TestBrokerNamespaceDefaulting(t *testing.T) {
 			},
 		}
 
+		boo := "sljkdsf"
+		fmt.Println(boo)
 		createdObj, err := c.Dynamic.
 			Resource(schema.GroupVersionResource{Group: "eventing.knative.dev", Version: "v1", Resource: "brokers"}).
 			Namespace(c.Namespace).

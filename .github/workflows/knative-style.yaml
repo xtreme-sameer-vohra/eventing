@@ -19,7 +19,12 @@ name: Code Style
 
 on:
   pull_request:
-    branches: [ 'main', 'master', 'release-*' ]
+    branches: [ 'main', 'master', 'release-*' , 'test-golant-linter']
+
+  schedule:
+    - cron:  '*/15 * * * *'
+
+  workflow_dispatch:
 
 jobs:
 
@@ -128,7 +133,7 @@ jobs:
         uses: golangci/golangci-lint-action@v2
         with:
           version: v1.35
-          args: --timeout=10m
+          args: --timeout=10m --verbose
 
       - name: misspell
         shell: bash

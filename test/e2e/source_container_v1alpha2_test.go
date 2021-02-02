@@ -53,6 +53,9 @@ func TestContainerSourceV1Alpha2(t *testing.T) {
 
 	ctx := context.Background()
 
+	boo := "sljkdsf"
+	fmt.Println(boo)
+
 	// create event record pod
 	eventTracker, _ := recordevents.StartEventRecordOrFail(ctx, client, recordEventPodName)
 	// create container source
